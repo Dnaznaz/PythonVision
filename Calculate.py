@@ -1,35 +1,48 @@
 import platform
 import subprocess
 import os
-import networktables
+from pynetworktables import Networktable
 import math
 
+def startNetworkTables(ipAddress):
+        Networktable.setIPAddress(ipAddress)
+        NetworkTable.setClientMode()
+        Networktable.initalize()
 
-class Point():
+def getTable(param, path):
+        try:
+            param = NetworkTable.getTable(path)
+        except Exception:
+            print(Exception.args)
+
+class Point:
     def __init__(self, x, y):
         self.X = x
         self.Y = y
 
 
-class GRIPClaculator():
-    resolutionX = 640
-    resolutionY = 480
-    offsetX = 0
-    offsetY = 0
-    cTable = None
-    lTable = None
+class GRIPClaculator:
+    resolutionX
+    resolutionY
+    offsetX
+    offsetY
+    cTable
+    lTable
 
     def __init__(self):
-        networktables.NetworkTable.setClientMode()
-        try:
-            cTable = networktables.networktable.NetworkTable.getTable("GRIP/Contoures")
-            lTable = networktables.networktable.NetworkTable.getTable("GRIP/Lines")
-        except Exception:
-            print(Exception.args)
+        resolutionX = 640
+        resolutionY = 480
+        offsetX = 0
+        offsetY = 0
+        cTable = None
+        lTable = None
 
-    def CalculateTargetAngleX():
-        if(cTable == None || lTabel == None):
-            throw new NUllPointerException()
+        while cTable == None:
+            getTable(cTable, "GRIP/Contoures")
+        while lTable == None:
+            getTable(lTable, "GRIP/Lines")
+        
+    def getTargetX(self):
         dst = calculateTargetPoint()
 
         targetAngle = math.degrees(math.atan((-resolutionY + dst.y)/(resolutionX/2 - dst.x)))
@@ -37,50 +50,51 @@ class GRIPClaculator():
             targetAngle = 180 + targetAngle
 		return (targetAngle - 90)/2 #negative to left, positive to right
     
-    def CalculateTargetAngleY():
-        
-        if(cTable == None || lTabel == None):
-            throw new NUllPointerException()
+    def getTargetY(self):
         dst = calculateTargetPoint()
-
+        
         targetAngle = math.degrees(math.atan((-resolutionY/2 + dst.y)/(-dst.x)))
 		return targetAngle #negative is down, positive is up
 
-    def CalculateTargetPoint(self):
-        cX = cTable.getNumberArray("centerX", defaultValue)
-        cY = cTable.getNumberArray("centerY", defaultValue)
-        cHeight = cTable.getNumberArray("height", defaultValue)
-        cWidth = cTable.getNumberArray("width", defaultValue)
-        cArea = cTable.getNumberArray("area", defaultValue)
-        lX1 = lTable.getNumberArray("x1", defaultValue)
-        lY1 = lTable.getNumberArray("y1", defaultValue)
+    def calculateTargetPoint(self):
+        if(cTable == None):
+            raise 'No contours table'
+        if(lTable == None):
+            raise 'No lines table'
+
+        centerX = cTable.getNumber("centerX")
+        centerY = cTable.getNumber("centerY")
+        height = cTable.getNumber("height")
+        width = cTable.getNumber("width")
+        targetX = lTable.getNumber("x1")
+        targetY = lTable.getNumber("y1")
+        targetLen = lTable.getNumber("length")
 		
-		if(cArea.count == 0 || lX1.count == 0):
-            throw new NullPointerException()
+		if(centerX.count == 0 or centerY.count == 0 or height.count == 0 or width.count == 0 or targetX.count == 0 or targetY.count == 0):
+            raise 'No area or targetX'
 		
 		target = 0
-		if (cArea.count > 1):
-			for i in range(1, cArea.count):
-				if (cArea[i] > cArea[target]):
-					target = i
+        for i in range(1, width.count + 1):
+            if (width[i] < width[target]):
+                target = i
 		
 		targetLines = []
-		for i in range(0, lX1.count):
-			if ((lX1[i] >= cX[target] - (cWidth[target]/2) and lX1[i] <= cX[target] + (cWidth[target]/2)) and
-					(lY1[i] >= cY[target] - (cHeight[target]/2) and lY1[i] <= cY[target] + (cHeight[target]/2))):
-				targetLines.add(i)
+		for i in range(0, targetX.count + 1):
+			if ((targetX[i] >= centerX[target] - (width[target]/2) and targetX[i] <= centerX[target] + (width[target]/2)) and
+            (targetY[i] >= centerY[target] - (height[target]/2) and targetY[i] <= centerY[target] + (height[target]/2))):
+				targetLines.append(i)
 
 		if(targetLines.count < 1):
-				throw new NullPointerException()	
+				raise 'No lines found'
 		elif (targetLines.count > 1):
 			target = 0
 			for i in range(1, targetLines.count + 1):
-				if (lX1[target] < lX1[i])
+				if (targetX[target] < targetX[i])
 					target = i;
 		else:
 			target = 0
-		point = new Point(lX1[target], lY1[target])
-		return point
+
+		return Point(targetX[target], targetY[target])
 
 def startGRIP():
     print("The file is at %s", os.path.dirname(os.path.realpath(__file__))#Debug
@@ -89,9 +103,17 @@ def startGRIP():
 
 def main():
     startGRIP()
+    calculator = GRIPClaculator('10.43.20.2')
+    
+    requestsTable = None
+    while requestsTable == None:
+        getTable(requestsTable, 'ImageRequests')
 
-    #calculator = GRIPClaculator()
-
+    while not requestsTable.getBoolean('close'):
+        if(requestsTable.getBoolean('shooterReq') == True):
+            requestsTable.putNumber('shooterError', calculator.getTargetY())
+        if(requestsTable.getBoolean('chassisReq') == True):
+            requestsTable.putNumber('chassisError', calculator.getTargetX)
 
 if __name__ == '__main__':
     main()
